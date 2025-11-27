@@ -33,7 +33,23 @@ OS=$(detect_os)
 echo "Detected OS: $OS"
 
 # Detect architecture (for Apple Silicon)
-ARCH=$(uname -m)
+# uname -m can return x86_64 under Rosetta, so also check sysctl on macOS
+detect_arch() {
+  if [ "$OS" = "macos" ]; then
+    # Check if running on Apple Silicon (even under Rosetta)
+    if sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -q "Apple"; then
+      echo "arm64"
+    elif [ "$(uname -m)" = "arm64" ]; then
+      echo "arm64"
+    else
+      echo "x86_64"
+    fi
+  else
+    uname -m
+  fi
+}
+
+ARCH=$(detect_arch)
 echo "Architecture: $ARCH"
 
 ########################################
