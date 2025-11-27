@@ -40,10 +40,25 @@ from contextlib import nullcontext
 
 from collections import defaultdict
 
-import cupy as cp
-from cupyx.scipy import ndimage as cp_ndimage
-import cupy.cuda.runtime as rt
-from cupyx.scipy.ndimage import binary_dilation
+import platform
+
+_HAS_CUPY = False
+_ON_DARWIN = platform.system() == "Darwin"
+
+if not _ON_DARWIN:
+    try:
+        import cupy as cp  # type: ignore
+        from cupyx.scipy import ndimage as cp_ndimage  # type: ignore
+        import cupy.cuda.runtime as rt  # type: ignore
+        from cupyx.scipy.ndimage import binary_dilation  # type: ignore
+
+        _ = rt.getDeviceCount()
+        _HAS_CUPY = True
+    except Exception:
+        _HAS_CUPY = False
+else:
+    # macOS: no native CUDA, force CPU-only paths
+    _HAS_CUPY = False
 
 from scipy.ndimage import distance_transform_edt
 from scipy.ndimage import generate_binary_structure

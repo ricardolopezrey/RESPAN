@@ -1,0 +1,56 @@
+name: respan
+channels:
+  - conda-forge
+  - defaults
+  - pytorch
+dependencies:
+  - python=3.10
+  
+  # Core Scientific Computing
+  - numpy>=1.21.0,<2.0.0
+  - scipy>=1.7.0
+  - pandas>=1.3.0
+  
+  # Image Processing
+  - tifffile>=2021.7.2
+  - scikit-image>=0.18.0
+  - nibabel>=3.2.0
+  
+  # Deep Learning - TensorFlow (for CARE)
+  - tensorflow>=2.8.0,<2.16.0
+  
+  # Deep Learning - PyTorch (for SelfNet)
+  - pytorch>=1.10.0
+  - torchvision>=0.11.0
+  
+  # Parallel Computing (Dask)
+  - dask>=2022.1.0
+  - dask-image>=2021.12.0
+  - distributed>=2022.1.0
+  
+  # Zarr & OME formats
+  - zarr>=2.10.0
+  - ome-zarr>=0.6.0
+  - numcodecs>=0.9.0
+  
+  # GUI Framework
+  - pyqt>=5.15.0
+  
+  # System Monitoring
+  - psutil>=5.8.0
+  
+  # Utilities
+  - pyyaml>=5.4.0
+  - matplotlib>=3.4.0
+  - ipython>=7.0.0
+  
+  # pip-only packages
+  - pip
+  - pip:
+    - trimesh>=3.9.0
+    - csbdeep>=0.7.0
+    - pynvml>=11.0.0
+    - patchify>=0.2.3
+    - memory-profiler>=0.60.0
+    # macOS does not support CUDA - CPU fallback for development
+    # - nnunetv2  # Uncomment for nnU-Net training capabilities

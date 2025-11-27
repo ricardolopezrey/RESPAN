@@ -42,17 +42,17 @@ nnUNet_paper = ("Please cite the following paper when using nnU-Net:"
                     "\nnetwork for medical image segmentation. Nature methods, 18(2), 203-211.\n")
 
 about_text = ("\nWe developed RESPAN to address a need for a comprehensive, accurate, automated analysis pipeline that utilizes state-of-the-art tools in a single user-friendly package."
-                       "\nTypically, employing multiple tools in pipelines like this can be complex, making it difficult to remember all the necessary steps and parameters for optimal results. "
-                       "Managing different environments, tracking inputs and outputs from various software tools, and navigating different GUIs or command line interfaces often requires extensive "
-                       "troubleshooting, consuming days to weeks of time."
+                    "\nTypically, employing multiple tools in pipelines like this can be complex, making it difficult to remember all the necessary steps and parameters for optimal results. "
+                    "Managing different environments, tracking inputs and outputs from various software tools, and navigating different GUIs or command line interfaces often requires extensive "
+                    "troubleshooting, consuming days to weeks of time."
                         "\n\nIn addition to the main analysis pipeline, RESPAN includes intuitive GUI's to streamline the training and validation of a variety of state-of-the-art neural network based appraoches. These include tabs for training both tensorflow and pytorch models for restoration and segmentation, as well as a GUI for validating segmentation results. "
                         "We hope that through this effort, RESPAN will not only facilitate neuron and spine quantification, but broadly empower you to consider these approaches when facing other challenging research questions."
-                       "\n "
-                       "\nIf RESPAN contributes to your research, please acknowledge it by citing:\n\n"
-                       "RESPAN: an accurate, unbiased and automated pipeline for analysis of dendritic morphology and dendritic spine mapping\n"
-                       "Authors: Sergio B. Garcia, Alexa P. Schlotter, Daniela Pereira, Franck Polleux, Luke A. Hammond\n"
-                       "DOI: https://doi.org/10.1101/2024.06.06.597812"
-                       "\n\n")
+                    "\n "
+                    "\nIf RESPAN contributes to your research, please acknowledge it by citing:\n\n"
+                    "RESPAN: an accurate, unbiased and automated pipeline for analysis of dendritic morphology and dendritic spine mapping\n"
+                    "Authors: Sergio B. Garcia, Alexa P. Schlotter, Daniela Pereira, Franck Polleux, Luke A. Hammond\n"
+                    "DOI: https://doi.org/10.1101/2024.06.06.597812"
+                    "\n\n")
 
 
 
@@ -73,9 +73,9 @@ import importlib
 import ctypes
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QTabWidget,
-                             QPushButton, QCheckBox, QLabel, QLineEdit, QComboBox,
-                             QMessageBox, QTextEdit, QWidget, QFileDialog,
-                             QHBoxLayout, QGroupBox, QProgressBar, QSplashScreen,QFrame, QStyleFactory)
+                            QPushButton, QCheckBox, QLabel, QLineEdit, QComboBox,
+                            QMessageBox, QTextEdit, QWidget, QFileDialog,
+                            QHBoxLayout, QGroupBox, QProgressBar, QSplashScreen,QFrame, QStyleFactory)
 from PyQt5.QtCore import Qt, pyqtSlot, QThread, pyqtSignal, QTimer, QObject
 from PyQt5.QtGui import QTextCursor, QPixmap, QPainter, QColor, QFont, QPalette, QIcon
 
@@ -91,11 +91,21 @@ DEV_ENV  = "respan99"                      # development environmet
 additional_logging_dev = False
 #Base Dir
 APP_DIR  = Path(sys.executable).parent if FROZEN \
-           else Path(__file__).resolve().parent            # …\Scripts
+        else Path(__file__).resolve().parent            # …\Scripts
+
+def _python_path(env_dir: Path) -> Path:
+    if os.name == "nt":
+        return env_dir / "python.exe"
+    return env_dir / "bin" / "python"
+
+def _script_path(env_dir: Path, name: str) -> Path:
+    if os.name == "nt":
+        return env_dir / "Scripts" / f"{name}.bat"
+    return env_dir / "bin" / name
 
 if FROZEN:
     VENV_DIR = APP_DIR / "_internal" / "respan"
-    PY_EXE   = VENV_DIR / "python.exe"
+    PY_EXE   = _python_path(VENV_DIR)
     SRC_DIR = APP_DIR / "_internal" / "nnUNet_install"
     INSTALL_DIR = Path(sys.executable).parent
     INTERNAL_DIR = APP_DIR / "_internal"
@@ -113,11 +123,17 @@ else:
     active_env = Path(sys.base_prefix)           # respandev
     conda_root = active_env.parent.parent        # …\anaconda3
     VENV_DIR   = conda_root / "envs" / DEV_ENV
-    PY_EXE = VENV_DIR / "python.exe"
+
+    PY_EXE = _python_path(VENV_DIR)
+
+    # Windows frozen build expects python.exe, but dev installs on macOS/Linux use "python"
+    python_name = "python.exe" if os.name == "nt" else "python"
+    PY_EXE = VENV_DIR / ("Scripts" if os.name == "nt" else "bin") / python_name
     if not PY_EXE.exists():
         raise RuntimeError(
-            f"Dev env '{DEV_ENV}' not found at {VENV_DIR}. ")
-    INSTALL_DIR = Path(r'C:\Users\Luke_H')
+            f"Dev env '{DEV_ENV}' not found at {PY_EXE.parent}.")
+    project_root = APP_DIR.parent
+    INSTALL_DIR = Path(os.environ.get("RESPAN_DEV_ROOT", project_root))
     SELFNET_TRAINING_SCRIPT = APP_DIR / "SelfNet_Model_Training.py"
     SELFNET_INFERENCE_SCRIPT = APP_DIR / "SelfNet_Inference.py"
     clean_launcher = APP_DIR / "clean_launcher.py"
@@ -126,9 +142,9 @@ else:
     global_env_path = str(VENV_DIR.parent)
     global_conda_path = str(VENV_DIR.parent.parent)
 
-nnunet_predict_bat = VENV_DIR / "Scripts" / "nnUNetv2_predict.bat"
-nnunet_plan_bat = VENV_DIR / "Scripts" / "nnUNetv2_plan_and_preprocess.bat"
-nnunet_train_bat = VENV_DIR / "Scripts" / "nnUNetv2_train.bat"
+nnunet_predict_bat = _script_path(VENV_DIR, "nnUNetv2_predict")
+nnunet_plan_bat = _script_path(VENV_DIR, "nnUNetv2_plan_and_preprocess")
+nnunet_train_bat = _script_path(VENV_DIR, "nnUNetv2_train")
 
 _SENTINEL = APP_DIR / ".nnunet_ok"
 
@@ -182,21 +198,24 @@ if getattr(sys, 'frozen', False):
     add_folders_to_path(base_path, folders_to_add)
 
 else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
-    base_path = os.path.join(os.path.dirname(base_path), 'Scripts')
+    base_path = str(APP_DIR)
+    project_root = APP_DIR.parent
     print(f"Running in development environment. Base path: {base_path}")
     global_GUI_app = False
     global_respan_env = 'respan99'
 
-    elastix_path = "C:/Program Files/elastix_5_2/"
-    elastix_params = "D:/Dropbox/Github/RESPAN/RESPAN/Elastix_params"
+    elastix_path = os.environ.get("ELASTIX_PATH", str(project_root / "elastix_5_2"))
+    elastix_params = os.environ.get("ELASTIX_PARAMS_PATH", str(project_root / "Elastix_params"))
 
 
 
-## supress windows with subprocess
-startupinfo = subprocess.STARTUPINFO()
-startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-startupinfo.wShowWindow = subprocess.SW_HIDE
+## supress windows with subprocess (Windows-only)
+if hasattr(subprocess, "STARTUPINFO"):
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+else:
+    startupinfo = None
 
 
 def log_output(pipe, logger):
@@ -284,7 +303,7 @@ def run_external_script(script_path: str, args: dict[str, str], logger):
     print("Executing: %s", " ".join(cmd))
 
     with subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, text=True) as proc:
+                        stderr=subprocess.STDOUT, text=True) as proc:
         for line in proc.stdout:
             logger.info(line.rstrip())
         if proc.wait():
@@ -719,11 +738,11 @@ class RESPANAnalysis(QWidget):
             '''
             options_tracking = QGroupBox("Spine Tracking and Temporal Analysis")
             options_tracking.setStyleSheet("QGroupBox::title {"
-                                         "subcontrol-origin: margin;"
-                                         "subcontrol-position: top left;"
-                                         "padding: 2px;"
-                                         "color: black;"
-                                         "}")
+                                        "subcontrol-origin: margin;"
+                                        "subcontrol-position: top left;"
+                                        "padding: 2px;"
+                                        "color: black;"
+                                        "}")
             options_tracking.setFont(titlefont)
             options_tracking_layout = QVBoxLayout()
             options_tracking.setLayout(options_tracking_layout)
@@ -1011,26 +1030,26 @@ class RESPANAnalysis(QWidget):
 
     @pyqtSlot()
     def get_RESPANdir(self):
-         RESPANdir = QFileDialog.getExistingDirectory(self, 'Select RESPAN directory')
-         if RESPANdir:
-             self.RESPANdir_label.setText(f"Selected directory: {RESPANdir}")
-             #self.RESPANdir_label.setFixedWidth(300)
-             #self.RESPANdir_labe.setWordWrap(True)
+        RESPANdir = QFileDialog.getExistingDirectory(self, 'Select RESPAN directory')
+        if RESPANdir:
+            self.RESPANdir_label.setText(f"Selected directory: {RESPANdir}")
+            #self.RESPANdir_label.setFixedWidth(300)
+            #self.RESPANdir_labe.setWordWrap(True)
 
     @pyqtSlot()
     def get_datadir(self):
-         datadir = QFileDialog.getExistingDirectory(self, 'Select data directory')
-         if datadir:
-             self.directory_label.setText(f"Selected directory: {datadir}")
-             #self.directory_label.setWordWrap(True)
+        datadir = QFileDialog.getExistingDirectory(self, 'Select data directory')
+        if datadir:
+            self.directory_label.setText(f"Selected directory: {datadir}")
+            #self.directory_label.setWordWrap(True)
 
     @pyqtSlot()
     def get_modeldir(self):
-         modeldir = QFileDialog.getExistingDirectory(self, 'Select model directory')
-         if modeldir:
-             self.model_directory_label.setText(f"Selected directory: {modeldir}")
-             #self.model_directory_label.setMaximumWidth(300)
-             #self.model_directory_label.setWordWrap(True)
+        modeldir = QFileDialog.getExistingDirectory(self, 'Select model directory')
+        if modeldir:
+            self.model_directory_label.setText(f"Selected directory: {modeldir}")
+            #self.model_directory_label.setMaximumWidth(300)
+            #self.model_directory_label.setWordWrap(True)
 
 
     @pyqtSlot()
@@ -1133,8 +1152,8 @@ class RESPANAnalysis(QWidget):
             return
 
         model_dir = self.model_directory_label.text().replace("Selected directory: ", "")
-        if model_dir == "No directory selected.":
-            QMessageBox.critical(self, "Error", "No directory selected.")
+        if model_dir == "No nnU-Net model directory selected.":
+            QMessageBox.critical(self, "Error", "No nnU-Net model directory selected.")
             self.progress.setVisible(False)
             return
 
@@ -1227,10 +1246,10 @@ class RESPANAnalysis(QWidget):
 
         #self.worker = AnalysisWorker(RESPAN, directory, other_options, min_dendrite_vol, spine_vol, spine_dist, HistMatch, Track, reg_method, self.logger)
         self.worker = AnalysisWorker(RESPAN, directory, model_dir, neck_generation, save_intermediate, dask_enabled, nnUNet_patching, save_validation,
-                                     inputxy, inputz, modelxy, modelz, neuron_ch, analysis_method,
-                                     image_restore, axial_restore, swc_gen,
-                                     min_dendrite_vol, spine_vol, spine_dist, #HistMatch,
-                                     Track, reg_method, use_yaml_res, second_pass, model_type, self.logger)
+                                    inputxy, inputz, modelxy, modelz, neuron_ch, analysis_method,
+                                    image_restore, axial_restore, swc_gen,
+                                    min_dendrite_vol, spine_vol, spine_dist, #HistMatch,
+                                    Track, reg_method, use_yaml_res, second_pass, model_type, self.logger)
 
 
         self.worker.task_done.connect(self.on_task_done)
@@ -1255,10 +1274,10 @@ class AnalysisWorker(QThread):
 
 
     def __init__(self, RESPAN, directory, model_dir, neck_generation, save_intermediate, dask_enabled, nnUNet_patching, save_validation,
-                                     inputxy, inputz, modelxy, modelz, neuron_ch, analysis_method,
-                                     image_restore, axial_restore, swc,
-                                     min_dendrite_vol, spine_vol, spine_dist, #HistMatch,
-                                     Track, reg_method, use_yaml_res, second_pass, model_type, logger):
+                                    inputxy, inputz, modelxy, modelz, neuron_ch, analysis_method,
+                                    image_restore, axial_restore, swc,
+                                    min_dendrite_vol, spine_vol, spine_dist, #HistMatch,
+                                    Track, reg_method, use_yaml_res, second_pass, model_type, logger):
 
 
         super().__init__()
@@ -1691,21 +1710,21 @@ class RESPANValidation(QWidget):
 
     @pyqtSlot()
     def get_RESPANdir(self):
-         RESPANdir = QFileDialog.getExistingDirectory(self, 'Select RESPAN directory')
-         if RESPANdir:
-             self.RESPANdir_label.setText(f"Selected directory: {RESPANdir}")
+        RESPANdir = QFileDialog.getExistingDirectory(self, 'Select RESPAN directory')
+        if RESPANdir:
+            self.RESPANdir_label.setText(f"Selected directory: {RESPANdir}")
 
     @pyqtSlot()
     def get_outputdir(self):
-         datadir = QFileDialog.getExistingDirectory(self, 'Select data analysis output directory')
-         if datadir:
-             self.directory_label.setText(f"Selected directory: {datadir}")
+        datadir = QFileDialog.getExistingDirectory(self, 'Select data analysis output directory')
+        if datadir:
+            self.directory_label.setText(f"Selected directory: {datadir}")
 
     @pyqtSlot()
     def get_gtdir(self):
-         gtdir = QFileDialog.getExistingDirectory(self, 'Select ground truth data directory')
-         if gtdir:
-             self.ground_truth_dir_label.setText(f"Selected directory: {gtdir}")
+        gtdir = QFileDialog.getExistingDirectory(self, 'Select ground truth data directory')
+        if gtdir:
+            self.ground_truth_dir_label.setText(f"Selected directory: {gtdir}")
 
     @pyqtSlot()
     def get_variables(self):
@@ -1963,11 +1982,11 @@ class UNet(QWidget):
 
         dir_options = QGroupBox("3D nnU-Net Training Data and Model Output Selection")
         dir_options.setStyleSheet("QGroupBox::title {"
-                                  "subcontrol-origin: margin;"
-                                  "subcontrol-position: top left;"
-                                  "padding: 2px;"
-                                  "color: black;"
-                                  "}")
+                                "subcontrol-origin: margin;"
+                                "subcontrol-position: top left;"
+                                "padding: 2px;"
+                                "color: black;"
+                                "}")
         dir_options.setFont(titlefont)
         dir_options_layout = QVBoxLayout()
         dir_options.setLayout(dir_options_layout)
@@ -2014,11 +2033,11 @@ class UNet(QWidget):
 
         options_group1 = QGroupBox("Additional Parameters")
         options_group1.setStyleSheet("QGroupBox::title {"
-                                     "subcontrol-origin: margin;"
-                                     "subcontrol-position: top left;"
-                                     "padding: 2px;"
-                                     "color: black;"
-                                     "}")
+                                    "subcontrol-origin: margin;"
+                                    "subcontrol-position: top left;"
+                                    "padding: 2px;"
+                                    "color: black;"
+                                    "}")
         options_group1.setFont(titlefont)
         options_layout1 = QVBoxLayout()
         options_group1.setLayout(options_layout1)
@@ -2224,7 +2243,7 @@ class UNet(QWidget):
 
 
         self.worker = UNetWorker(RESPAN, input_dir, model_output, datasetID, ignore,
-                                 self.logger)
+                                self.logger)
         self.worker.task_done.connect(self.on_task_done)
         self.worker.start()
 
@@ -2247,7 +2266,7 @@ class UNetWorker(QThread):
 
     # def __init__(self, RESPAN, ground_truth, analysis_output, logger):
     def __init__(self, RESPAN, input_dir, model_output, datasetID, ignore,
-                                  logger):
+                                logger):
         super().__init__()
         self.RESPAN = RESPAN
         self.input_dir = input_dir
@@ -2352,11 +2371,11 @@ class CARE(QWidget):
 
         dir_options = QGroupBox("CARE Training Data and Model Output Selection")
         dir_options.setStyleSheet("QGroupBox::title {"
-                                  "subcontrol-origin: margin;"
-                                  "subcontrol-position: top left;"
-                                  "padding: 2px;"
-                                  "color: black;"
-                                  "}")
+                                "subcontrol-origin: margin;"
+                                "subcontrol-position: top left;"
+                                "padding: 2px;"
+                                "color: black;"
+                                "}")
         dir_options.setFont(titlefont)
         dir_options_layout = QVBoxLayout()
         dir_options.setLayout(dir_options_layout)
@@ -2404,11 +2423,11 @@ class CARE(QWidget):
 
         options_group1 = QGroupBox("Model Training Options")
         options_group1.setStyleSheet("QGroupBox::title {"
-                                     "subcontrol-origin: margin;"
-                                     "subcontrol-position: top left;"
-                                     "padding: 2px;"
-                                     "color: black;"
-                                     "}")
+                                    "subcontrol-origin: margin;"
+                                    "subcontrol-position: top left;"
+                                    "padding: 2px;"
+                                    "color: black;"
+                                    "}")
         options_group1.setFont(titlefont)
         options_layout1 = QVBoxLayout()
         options_group1.setLayout(options_layout1)
@@ -2473,11 +2492,11 @@ class CARE(QWidget):
 
         options_group2 = QGroupBox("Additonal Options")
         options_group2.setStyleSheet("QGroupBox::title {"
-                                     "subcontrol-origin: margin;"
-                                     "subcontrol-position: top left;"
-                                     "padding: 2px;"
-                                     "color: black;"
-                                     "}")
+                                    "subcontrol-origin: margin;"
+                                    "subcontrol-position: top left;"
+                                    "padding: 2px;"
+                                    "color: black;"
+                                    "}")
         options_group2.setFont(titlefont)
         options_layout2 = QVBoxLayout()
         options_group2.setLayout(options_layout2)
@@ -2783,8 +2802,8 @@ class CARE(QWidget):
         # self.worker = Worker(RESPAN, directory, channel_options, integers, self.logger.get_logger())
         # self.worker = Worker(RESPAN, ground_truth, analysis_output, self.logger)
         self.worker = CAREWorker(RESPAN, input_dir, model_output, model_name, augmentation, data_type,
-                                 patch_size, num_patches_per_img, epochs, unet_kern_size, unet_n_depth, batch_size,
-                                 steps_per_epoch, pct_validation,  self.logger)
+                                patch_size, num_patches_per_img, epochs, unet_kern_size, unet_n_depth, batch_size,
+                                steps_per_epoch, pct_validation,  self.logger)
         self.worker.task_done.connect(self.on_task_done)
         self.worker.start()
 
@@ -2806,8 +2825,8 @@ class CAREWorker(QThread):
     task_done = pyqtSignal(str)
 
     def __init__(self, RESPAN, input_dir, model_output, model_name, augmentation, data_type,
-                                 patch_size, num_patches_per_img, epochs, unet_kern_size, unet_n_depth, batch_size,
-                                 steps_per_epoch, pct_validation,  logger):
+                                patch_size, num_patches_per_img, epochs, unet_kern_size, unet_n_depth, batch_size,
+                                steps_per_epoch, pct_validation,  logger):
 
         super().__init__()
 
@@ -2901,11 +2920,11 @@ class CAREWorker(QThread):
                 self.logger.info(
                     "-----------------------------------------------------------------------------------------------------")
             #else:
-              #  self.logger.info("Error: CARE failed to train.")
+            #  self.logger.info("Error: CARE failed to train.")
                 #self.logger.info(
-                 #   " Path set to:" + settings.nnUnet_conda_path + '/envs/' + settings.respan_env + '/')
+                #   " Path set to:" + settings.nnUnet_conda_path + '/envs/' + settings.respan_env + '/')
                 #self.logger.info(
-                 #   " Please check that paths are set correctly")
+                #   " Please check that paths are set correctly")
 
             self.task_done.emit("")
             self.is_running = False
@@ -2927,11 +2946,11 @@ class SelfNet(QWidget):
 
         dir_options = QGroupBox("Self-Net Training Data and Model Output Selection")
         dir_options.setStyleSheet("QGroupBox::title {"
-                                  "subcontrol-origin: margin;"
-                                  "subcontrol-position: top left;"
-                                  "padding: 2px;"
-                                  "color: black;"
-                                  "}")
+                                "subcontrol-origin: margin;"
+                                "subcontrol-position: top left;"
+                                "padding: 2px;"
+                                "color: black;"
+                                "}")
         dir_options.setFont(titlefont)
         dir_options_layout = QVBoxLayout()
         dir_options.setLayout(dir_options_layout)
@@ -2977,11 +2996,11 @@ class SelfNet(QWidget):
 
         options_group1 = QGroupBox("Additional Parameters")
         options_group1.setStyleSheet("QGroupBox::title {"
-                                     "subcontrol-origin: margin;"
-                                     "subcontrol-position: top left;"
-                                     "padding: 2px;"
-                                     "color: black;"
-                                     "}")
+                                    "subcontrol-origin: margin;"
+                                    "subcontrol-position: top left;"
+                                    "padding: 2px;"
+                                    "color: black;"
+                                    "}")
         options_group1.setFont(titlefont)
         options_layout1 = QVBoxLayout()
         options_group1.setLayout(options_layout1)
@@ -3325,7 +3344,7 @@ class SelfNet(QWidget):
                 self.logger.qt_handler.log_generated.disconnect(self.update_log_display)
 
             self.worker = SelfNetWorker(RESPAN, input_dir, model_output, model_name,
-                                       minv, maxv, minb, scale, xy_int, xz_int, batch_size, epochs, log_interval, imshow_interval,
+                                    minv, maxv, minb, scale, xy_int, xz_int, batch_size, epochs, log_interval, imshow_interval,
                                         global_env_path, global_respan_env, self.logger)
             self.worker.task_done.connect(self.on_task_done)
             self.worker.start()
@@ -3354,8 +3373,8 @@ class SelfNetWorker(QThread):
     task_done = pyqtSignal(str)
 
     def __init__(self, RESPAN, input_dir, model_dir, model_name,
-                 min_v, max_v, bg_threshold, scale, xy_int, xz_int, batch_size, epochs, log_interval, imshow_interval,
-                 conda_path, respan_env, logger):
+                min_v, max_v, bg_threshold, scale, xy_int, xz_int, batch_size, epochs, log_interval, imshow_interval,
+                conda_path, respan_env, logger):
         super().__init__()
 
         self.RESPAN = RESPAN
@@ -3441,8 +3460,8 @@ class SelfNetWorker(QThread):
                 #_run([str(PY_EXE), "-u", str(base_path + "\SelfNet_Model_Training.py"), *args_dict], self.logger)
                 run_external_script( SELFNET_TRAINING_SCRIPT, args_dict, self.logger)
                 #run_external_script(
-                   # base_path + "\SelfNet_Model_Training.py", global_conda_path,
-                 #   global_respan_env, args_dict, self.logger)
+                # base_path + "\SelfNet_Model_Training.py", global_conda_path,
+                #   global_respan_env, args_dict, self.logger)
                 self.logger.info("-----------------------------------------------------------------------------------------------------")
                 self.logger.info("RESPAN Version: " + __version__)
                 self.logger.info("Release Date: " + __date__ + "")
@@ -3511,11 +3530,11 @@ class About(QWidget):
 
         dir_options = QGroupBox("Restoration Enhanced Neuron and SPine Analysis (RESPAN)")
         dir_options.setStyleSheet("QGroupBox::title {"
-                                  "subcontrol-origin: margin;"
-                                  "subcontrol-position: top left;"
-                                  "padding: 2px;"
-                                  "color: black;"
-                                  "}")
+                                "subcontrol-origin: margin;"
+                                "subcontrol-position: top left;"
+                                "padding: 2px;"
+                                "color: black;"
+                                "}")
         dir_options.setFont(titlefont)
         dir_options_layout = QVBoxLayout()
         dir_options.setLayout(dir_options_layout)

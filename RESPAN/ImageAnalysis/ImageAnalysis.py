@@ -49,10 +49,26 @@ from scipy.ndimage import generate_binary_structure, distance_transform_edt, gau
 from scipy.interpolate import splprep, splev
 from scipy.spatial import cKDTree
 
-import cupy as cp
-import cupy.cuda.runtime as rt
-from cupyx.scipy import ndimage as cp_ndimage
-from cupyx.scipy.ndimage import binary_dilation
+import platform
+
+# Optional CuPy/CUDA support: disabled on macOS and when CUDA is unavailable.
+_HAS_CUPY = False
+_ON_DARWIN = platform.system() == "Darwin"
+
+if not _ON_DARWIN:
+    try:
+        import cupy as cp
+        import cupy.cuda.runtime as rt
+        from cupyx.scipy import ndimage as cp_ndimage
+        from cupyx.scipy.ndimage import binary_dilation
+
+        _ = rt.getDeviceCount()
+        _HAS_CUPY = True
+    except Exception:
+        _HAS_CUPY = False
+else:
+    # macOS: no native CUDA; force CPU-only paths.
+    _HAS_CUPY = False
 
 import dask as dask
 from dask.distributed import Client, LocalCluster
@@ -377,9 +393,14 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
         logger.info("\n    Calculating spine necks...")
         time_neck_connection = time.time()
 
-        # disable neck analysis for very large datasets
+        # disable neck analysis for very large datasets or when GPU (CuPy/CUDA) is unavailable
         if settings.neck_generation == False:
             logger.info(f"     Image shape is {spines_filtered.shape}. Neck analysis has been disabled.")
+            connected_necks = np.zeros_like(spines_filtered)
+        elif not _HAS_CUPY:
+            # CuPy/CUDA not available (e.g., macOS) - skip neck generation
+            logger.info("     Neck generation requires GPU (CuPy/CUDA) which is not available on this system.")
+            logger.info("     Skipping neck generation. Spine measurements will be calculated without neck data.")
             connected_necks = np.zeros_like(spines_filtered)
         else:
             if settings.model_type >= 3:
@@ -511,11 +532,17 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
             logger.info(f"      Max ID for spines filtered is {np.max(spines_filtered)}")
             logger.info(f"      Max ID for connected necks is {np.max(connected_necks)}")
 
+        spine_mesh_results = None  # Initialize to None, will be set if mesh analysis runs
         if settings.mesh_analysis == True:
-            spine_mesh_results = analyze_spines_batch(((connected_necks * ~(spines_filtered > 0)) + spines_filtered),
-                                                      spines_filtered, labeled_dendrites, neuron, locations, settings,
-                                                      logger,
-                                                      [settings.input_resZ, settings.input_resXY, settings.input_resXY])
+            if not _HAS_CUPY:
+                # CuPy/CUDA not available (e.g., macOS) - skip GPU mesh analysis
+                logger.info("     GPU mesh analysis requires CuPy/CUDA which is not available on this system.")
+                logger.info("     Skipping additional mesh measurements.")
+            else:
+                spine_mesh_results = analyze_spines_batch(((connected_necks * ~(spines_filtered > 0)) + spines_filtered),
+                                                          spines_filtered, labeled_dendrites, neuron, locations, settings,
+                                                          logger,
+                                                          [settings.input_resZ, settings.input_resXY, settings.input_resXY])
         # spine_mesh_results.to_csv(locations.tables + 'Detected_spines_mesh_measurements_' + filename + '.csv', index=False)
 
         # analyze spine necks
@@ -591,7 +618,7 @@ def spine_and_whole_neuron_processing(image, labels_vol, spine_summary, settings
             spine_table = tables.merge_spine_measurements(spine_table, neck_table, settings, logger)
 
 
-            if settings.mesh_analysis == True:
+            if settings.mesh_analysis == True and _HAS_CUPY and spine_mesh_results is not None:
                 # drop 'start_coords' from spine_mesh_results
                 spine_mesh_results.drop(['start_coords'], axis=1, inplace=True)
 
@@ -1009,6 +1036,8 @@ def initial_spine_measurements(image, labels, dendrite, max_label, neuron_ch, de
 
 @mp.profile_mem()
 def associate_spines_with_necks_gpu(spines, necks, logger):
+    if not _HAS_CUPY:
+        raise RuntimeError("GPU neck association requested but CuPy/CUDA is unavailable on this system.")
     # Convert to CuPy arrays
     labeled_array_cp = cp.array(spines)
     binary_array_cp = cp.array( necks > 0)
@@ -1046,6 +1075,8 @@ def associate_spines_with_necks_gpu(spines, necks, logger):
 
 @mp.profile_mem()
 def extend_objects_GPU(objects, target_objects, intensity, settings, locations, logger):
+    if not _HAS_CUPY:
+        raise RuntimeError("GPU neck extension requested but CuPy/CUDA is unavailable on this system.")
     logger.info("     Finding spine necks using GPU...")
 
     if not (objects.shape == target_objects.shape):
@@ -1125,6 +1156,8 @@ def extend_objects_GPU(objects, target_objects, intensity, settings, locations, 
 
 
 def extend_single_object_GPU_v2(label_value, object_subvolume, target_subvolume, intensity_subvolume, settings, logger):
+    if not _HAS_CUPY:
+        raise RuntimeError("GPU pathfinding requested but CuPy/CUDA is unavailable on this system.")
     # Convert numpy arrays to CuPy arrays
     # logger.info(f"Label {label_value} - Subvolume shapes: subvolume {object_subvolume.shape}, target {target_subvolume.shape}, traversable {traversable_subvolume.shape}")
 
@@ -1193,6 +1226,8 @@ def extend_single_object_GPU_v2(label_value, object_subvolume, target_subvolume,
 
 @mp.profile_mem()
 def analyze_spines_batch(spine_labels_vol, head_labels_vol, dendrite, neuron, locations, settings, logger, scaling):
+    if not _HAS_CUPY:
+        raise RuntimeError("GPU spine mesh analysis requested but CuPy/CUDA is unavailable on this system.")
     #dendrites and labels and must be binarized for further analysis
 
     start_time = time.time()
@@ -1561,6 +1596,8 @@ def calculate_dend_ID_and_geo_distance(labeled_dendrites, labeled_spines, skelet
 @mp.profile_mem()
 def analyze_spines_batch_tiled(spine_labels_vol, head_labels_vol, dendrite, neuron, locations, settings, logger,
                                scaling):
+    if not _HAS_CUPY:
+        raise RuntimeError("GPU tiled spine mesh analysis requested but CuPy/CUDA is unavailable on this system.")
     start_time = time.time()
     results = []
     shape = spine_labels_vol.shape
@@ -4882,11 +4919,16 @@ def flush_ram_and_gpu_memory(settings, logger):
     if namespace is not None:
         keys_to_delete = []
         for var_name, obj in list(namespace.items()):
-            # Check if it's a NumPy or CuPy array with large nbytes
-            if isinstance(obj, (np.ndarray, cp.ndarray)):
-                # obj.nbytes is the data size in bytes
-                if obj.nbytes >= size_threshold:
-                    keys_to_delete.append(var_name)
+            # Check if it's a NumPy array with large nbytes
+            # Only check CuPy arrays if CuPy is available
+            is_large_array = False
+            if isinstance(obj, np.ndarray):
+                is_large_array = obj.nbytes >= size_threshold
+            elif _HAS_CUPY and isinstance(obj, cp.ndarray):
+                is_large_array = obj.nbytes >= size_threshold
+            
+            if is_large_array:
+                keys_to_delete.append(var_name)
 
         # Actually remove them
         for var_name in keys_to_delete:
@@ -4899,10 +4941,11 @@ def flush_ram_and_gpu_memory(settings, logger):
     # Force Python garbage collection
     gc.collect()
 
-    # Synchronize and free GPU memory blocks
-    cp.cuda.Device().synchronize()
-    cp.get_default_memory_pool().free_all_blocks()
-    cp.get_default_pinned_memory_pool().free_all_blocks()
+    # Synchronize and free GPU memory blocks (only if CuPy is available)
+    if _HAS_CUPY:
+        cp.cuda.Device().synchronize()
+        cp.get_default_memory_pool().free_all_blocks()
+        cp.get_default_pinned_memory_pool().free_all_blocks()
 
     # Log memory usage after flush
     if settings.save_intermediate_data == True:

@@ -53,4 +53,11 @@ Refinement:
     model_resXY: 0.065 #resolution of trained 2ndpass model
     model_resZ: 0.065 #resolution of trained 2ndpass model
 
+# nnUNet ENVIRONMENT PATHS
+
+nnUNet:
+    raw_path: /Users/ricardolopezrey/code/RESPAN/nnUNet/nnUNet_raw              # Optional override for $nnUNet_raw (defaults to unset)
+    preprocessed_path: /Users/ricardolopezrey/code/RESPAN/nnUNet/nnUNet_preprocessed     # Optional override for $nnUNet_preprocessed
+    results_path: /Users/ricardolopezrey/code/RESPAN/nnUNet/nnUNet_results          # Optional override for $nnUNet_results (defaults to model directory parent)
+
 

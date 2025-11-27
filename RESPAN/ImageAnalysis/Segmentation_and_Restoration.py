@@ -16,6 +16,7 @@ import RESPAN.ImageAnalysis.ImageAnalysis as imgan
 
 
 import os
+import platform
 import numpy as np
 import warnings
 import re
@@ -316,12 +317,43 @@ def restore_image(inputdir, settings, locations, logger):
 
 
 def initialize_nnUnet(settings, logger):
-    #not worrying about setting raw and processed, as not needed and would rquire additional params for user/settings file
-    #os.environ['nnUNet_raw'] = settings.nnUnet_raw
-    #os.environ['nnUNet_preprocessed'] = settings.nnUnet_preprocessed
-    nnUnet_results = Path(settings.neuron_seg_model_path).parent
-    nnUnet_results = str(nnUnet_results).replace("\\", "/")
-    os.environ['nnUNet_results'] = nnUnet_results
+    """Ensure nnUNet environment variables are populated from RESPAN settings."""
+
+    def _set_env(var_name, configured_path):
+        if not configured_path:
+            return None
+        expanded = os.path.expandvars(os.path.expanduser(str(configured_path)))
+        resolved = Path(expanded).expanduser().resolve()
+        resolved.mkdir(parents=True, exist_ok=True)
+        os.environ[var_name] = str(resolved)
+        logger.info(f"     Using {var_name} = {resolved}")
+        return resolved
+
+    raw_override = getattr(settings, 'nnunet_raw_path', None)
+    preproc_override = getattr(settings, 'nnunet_preprocessed_path', None)
+    results_override = getattr(settings, 'nnunet_results_path', None)
+
+    raw_dir = _set_env('nnUNet_raw', raw_override)
+    pre_dir = _set_env('nnUNet_preprocessed', preproc_override)
+
+    if results_override:
+        results_dir = _set_env('nnUNet_results', results_override)
+    else:
+        results_dir = Path(settings.neuron_seg_model_path).parent
+        results_dir = str(results_dir).replace("\\", "/")
+        os.environ['nnUNet_results'] = results_dir
+        logger.info(f"     Using nnUNet_results = {results_dir}")
+
+    if not raw_dir:
+        logger.info("     [nnUNet] nnUNet_raw not set in Analysis_Settings.yaml; CLI may require it before running.")
+    if not pre_dir:
+        logger.info("     [nnUNet] nnUNet_preprocessed not set in Analysis_Settings.yaml; CLI may require it before running.")
+    if not results_dir:
+        logger.info("     [nnUNet] nnUNet_results could not be derived; please update Analysis_Settings.yaml.")
+
+    # macOS CPU detection via blosc2 can fail; disable HW probe to avoid JSON decode errors
+    if 'BLOSC_NO_HW_DETECTION' not in os.environ:
+        os.environ['BLOSC_NO_HW_DETECTION'] = '1'
 
 
 
@@ -586,6 +618,21 @@ def run_nnunet_predict(nnunet_predict_bat, input_dir, output_dir, dataset_id, nn
     # Define the command to be run
     # cmd = "nnUNetv2_predictRESPAN -i \"{}\" -o \"{}\" -d {} -c {} -f all".format(input_dir, output_dir, dataset_id, nnunet_type)
     #cmd = "nnUNetv2_predict -i \"{}\" -o \"{}\" -d {} -c {} -f all".format(input_dir, output_dir, dataset_id,nnunet_type)
+    
+    # Determine inference device: use 'mps' on Apple Silicon if available, otherwise 'cpu'
+    # Note: nnU-Net v2 supports 'mps' device for Apple Silicon GPUs
+    infer_device = "cpu"  # Default to CPU
+    if platform.system() == "Darwin":
+        try:
+            import torch
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                infer_device = "mps"
+                logger.info("     Using MPS (Apple Silicon GPU) for nnU-Net inference")
+            else:
+                logger.info("     Using CPU for nnU-Net inference (MPS not available)")
+        except ImportError:
+            logger.info("     Using CPU for nnU-Net inference (torch not available in parent process)")
+    
     cmd_list = [
         str(settings.internal_py_path),
         str(settings.clean_launcher),
@@ -594,16 +641,22 @@ def run_nnunet_predict(nnunet_predict_bat, input_dir, output_dir, dataset_id, nn
         "-o", output_dir,
         "-d", dataset_id,
         "-c", nnunet_type,
-        "-f", "all"
+        "-f", "all",
+        "-device", infer_device  # Force CPU/MPS instead of CUDA
     ]
 
     # Convert to string for shell=True
-    cmd = ' '.join(f'"{arg}"' for arg in cmd_list)
+    # Prepend BLOSC env var inline so it's guaranteed present in the shell child
+    blosc_prefix = "BLOSC_NO_HW_DETECTION=1 " if platform.system() == "Darwin" else ""
+    cmd = blosc_prefix + ' '.join(f'"{arg}"' for arg in cmd_list)
 
     # Create clean environment
     env = os.environ.copy()
     env['PYTHONNOUSERSITE'] = '1'
     env['PYTHONPATH'] = ''
+
+    # Prevent blosc2/cpuinfo JSON crash on macOS (must be set before child python starts)
+    env['BLOSC_NO_HW_DETECTION'] = '1'
 
     # Preserve critical nnUNet environment variables
     #logger.info("=== DEBUG: Preserving nnUNet variables ===")

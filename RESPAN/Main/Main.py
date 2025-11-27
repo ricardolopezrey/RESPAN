@@ -18,6 +18,7 @@ import os
 import sys
 import yaml
 import ast
+from copy import deepcopy
 
 ##############################################################################
 # Main Functions
@@ -115,6 +116,32 @@ PrettySafeLoader.add_constructor(
     u'tag:yaml.org,2002:python/tuple',
     PrettySafeLoader.construct_python_tuple)
 
+
+def _merge_with_defaults(defaults, overrides):
+    """Recursively merge overrides into defaults, returning a new dict/structure."""
+    if isinstance(defaults, dict) and isinstance(overrides, dict):
+        merged = deepcopy(defaults)
+        for key, value in overrides.items():
+            merged[key] = _merge_with_defaults(defaults.get(key), value)
+        return merged
+    if overrides is None:
+        return deepcopy(defaults)
+    if defaults is None:
+        return deepcopy(overrides)
+    return overrides
+
+
+def _load_template_settings():
+    template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "Templates", "Analysis_Settings.yaml")
+    try:
+        with open(template_path, 'r') as tmpl:
+            return yaml.load(tmpl, Loader=PrettySafeLoader)
+    except FileNotFoundError:
+        return {}
+
+
+_TEMPLATE_SETTINGS = _load_template_settings()
     
 class HiddenPrints:
     def __enter__(self):
@@ -155,6 +182,12 @@ class Create_Settings():
         with open(settings_file, 'r') as ymlfile:
             #setting = yaml.safe_load(ymlfile)
             setting = yaml.load(ymlfile, Loader = PrettySafeLoader)
+
+        if setting is None:
+            setting = {}
+
+        if _TEMPLATE_SETTINGS:
+            setting = _merge_with_defaults(_TEMPLATE_SETTINGS, setting)
             
             self.input_resXY = setting["Parameters"]["input_resXY"]
             self.input_resZ = setting["Parameters"]["input_resZ"]
@@ -208,6 +241,11 @@ class Create_Settings():
                 self.refinement_XY = None
 
             self.Vaa3Dpath = setting["Vaa3D"]["path"]
+
+            nnunet_cfg = setting.get("nnUNet", {}) or {}
+            self.nnunet_raw_path = nnunet_cfg.get("raw_path")
+            self.nnunet_preprocessed_path = nnunet_cfg.get("preprocessed_path")
+            self.nnunet_results_path = nnunet_cfg.get("results_path")
 
     def inspect(self):
         for attr_name in dir(self):
